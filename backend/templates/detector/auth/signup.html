@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>ShieldAI - Sign Up</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e2e8f0;
+        }
+        .auth-container {
+            background: rgba(20, 20, 40, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 3rem 2.5rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 420px;
+            margin: 1rem;
+        }
+        .logo { text-align: center; margin-bottom: 2rem; color: #60a5fa; font-size: 2rem; font-weight: 700; }
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.5rem; opacity: 0.9; font-weight: 500; }
+        input {
+            width: 100%; padding: 1rem 1.25rem; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px; background: rgba(255,255,255,0.05); color: #e2e8f0;
+            font-size: 1rem; transition: all 0.3s ease;
+        }
+        input:focus {
+            outline: none; border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(96,165,250,0.1);
+            background: rgba(255,255,255,0.08);
+        }
+        input::placeholder { color: #94a3b8; }
+        .btn {
+            width: 100%; padding: 1rem; border: none; border-radius: 12px;
+            font-weight: 600; cursor: pointer; transition: all 0.3s ease;
+            font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #60a5fa, #3b82f6); color: white;
+            box-shadow: 0 10px 25px rgba(96,165,250,0.3);
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(96,165,250,0.4); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .auth-switch {
+            text-align: center; opacity: 0.8; font-size: 0.95rem;
+        }
+        .auth-switch a { color: #60a5fa; text-decoration: none; font-weight: 500; }
+        .auth-switch a:hover { text-decoration: underline; }
+        .error, .success {
+            padding: 1rem; border-radius: 12px; margin-bottom: 1rem; font-weight: 500;
+        }
+        .error { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+        .success { background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="logo">
+            <i class="fas fa-shield-alt"></i> ShieldAI
+        </div>
+        <div id="message"></div>
+        <form id="signupForm">
+            <div class="form-group">
+                <label for="username"><i class="fas fa-user"></i> Username</label>
+                <input type="text" id="username" name="username" required placeholder="Choose username" minlength="3">
+            </div>
+            <div class="form-group">
+                <label for="email"><i class="fas fa-envelope"></i> Email</label>
+                <input type="email" id="email" name="email" required placeholder="your@email.com">
+            </div>
+            <div class="form-group">
+                <label for="password"><i class="fas fa-lock"></i> Password</label>
+                <input type="password" id="password" name="password" required placeholder="Strong password" minlength="6">
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-user-plus"></i> Sign Up
+            </button>
+        </form>
+        <div class="auth-switch">
+            Have an account? <a href="/auth/login/">Login</a>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('signupForm');
+        const messageEl = document.getElementById('message');
+        
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData);
+            
+            try {
+                messageEl.innerHTML = '<div class="success">Creating account...</div>';
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                
+                const response = await fetch('/api/auth/signup/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    messageEl.innerHTML = `<div class="success">✅ ${result.message}</div>`;
+                    setTimeout(() => {
+                        window.location.href = '/auth/login/';
+                    }, 1500);
+                } else {
+                    messageEl.innerHTML = `<div class="error">❌ ${result.error || 'Signup failed'}</div>`;
+                }
+            } catch (err) {
+                console.error('Signup error:', err);
+                messageEl.innerHTML = `<div class="error">❌ Error: ${err.message || 'Network error'}</div>`;
+            }
+        };
+    </script>
+</body>
+</html>

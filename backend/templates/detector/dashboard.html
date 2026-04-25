@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShieldAI - Analytics Dashboard</title>
+    {% load static %}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%); 
+            color: #e2e8f0; 
+            min-height: 100vh;
+        }
+        
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Sidebar - Enhanced with tabs */
+        .sidebar {
+            width: 280px;
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+            padding: 2rem 1.5rem;
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #60a5fa;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #94a3b8;
+        }
+        
+        .nav-item:hover, .nav-item.active {
+            background: rgba(96, 165, 250, 0.1);
+            color: #60a5fa;
+            transform: translateX(4px);
+        }
+        .nav-item.analytics.active { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        
+        .nav-icon { width: 20px; margin-right: 1rem; }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            margin-left: 280px;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        
+        .page-title {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Tab Sections */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* Analytics Dashboard */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .kpi-card {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card:hover { transform: translateY(-8px); box-shadow: 0 25px 50px rgba(0,0,0,0.3); }
+        
+        .kpi-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .total .kpi-icon { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+        .normal .kpi-icon { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .alert .kpi-icon { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .phone .kpi-icon { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+        .cheating .kpi-icon { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        
+        .kpi-value { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .kpi-label { opacity: 0.8; font-size: 0.95rem; }
+        .kpi-change { font-size: 0.85rem; margin-top: 0.5rem; }
+        
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 1200px) { .charts-grid { grid-template-columns: 1fr; } }
+        
+        .chart-container {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            height: 400px;
+        }
+        .chart-container h3 {
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .live-section { /* Preserve original live proctoring */ }
+        
+        /* Live Detection - Collapsed by default */
+        .live-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .webcam-container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 1024px) { .webcam-container { grid-template-columns: 1fr; } }
+        
+        /* Preserve original styles for live */
+        .video-section, .status-section { /* ... existing ... */ }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; padding: 1rem; }
+        }
+        
+        .btn { /* existing */ }
+        .toast { /* existing */ }
+        
+        .refresh-info {
+            text-align: center;
+            opacity: 0.6;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="logo">
+                <i class="fas fa-shield-alt"></i> ShieldAI
+            </div>
+            <div class="nav-item active" data-tab="analytics">
+                <i class="fas fa-chart-bar nav-icon"></i>
+                <span>Analytics Dashboard</span>
+            </div>
+            <div class="nav-item" data-tab="live">
+                <i class="fas fa-video nav-icon"></i>
+                <span>Live Detection</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-history nav-icon"></i>
+                <span>Session Logs</span>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="header">
+                <button class="mobile-menu btn btn-secondary" onclick="toggleSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1 class="page-title" id="pageTitle">Analytics Dashboard</h1>
+                <div>
+                    <span id="lastUpdate" style="opacity: 0.7;"></span>
+                    <button id="refreshBtn" class="btn btn-primary" onclick="fetchAnalytics()" style="margin-left: 1rem;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Analytics Tab -->
+            <div id="analyticsTab" class="tab-content active">
+                <div class="analytics-grid" id="kpiGrid">
+                    <!-- KPI cards populated by JS -->
+                </div>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h3><i class="fas fa-chart-pie"></i> Distribution</h3>
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3><i class="fas fa-chart-bar"></i> Counts</h3>
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-container" style="grid-column: 1 / -1;">
+                    <h3><i class="fas fa-chart-line"></i> Trends (Last 30 Days)</h3>
+                    <canvas id="lineChart"></canvas>
+                </div>
+                
+                <div class="refresh-info">
+                    <i class="fas fa-sync-alt"></i> Auto-refreshes every 30 seconds | <span id="dataCount">0</span> sessions
+                </div>
+            </div>
+            
+            <!-- Live Detection Tab (preserve original) -->
+            <div id="liveTab" class="tab-content">
+                <div class="live-container">
+                    <!-- Original webcam/status content here - to be populated -->
+                    <div class="webcam-container">
+                        <div class="video-section">
+                            <video id="video" autoplay muted playsinline></video>
+                            <canvas id="canvas" width="640" height="480"></canvas>
+                            <div class="controls">
+                                <button id="startBtn" class="btn btn-primary">
+                                    <i class="fas fa-play"></i> Start Detection
+                                </button>
+                                <button id="stopBtn" class="btn btn-secondary" disabled>
+                                    <i class="fas fa-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                        <div class="status-section">
+                            <!-- Original status cards -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <div id="toast" class="toast"></div>
+
+    <script src="{% static 'detector/js/main.js' %}"></script>
+</body>
+</html>

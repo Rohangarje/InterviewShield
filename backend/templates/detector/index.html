@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShieldAI - Analytics &amp; Live Dashboard</title>
+    {% load static %}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%); 
+            color: #e2e8f0; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        
+        .app-container {
+            display: flex;
+            height: 100vh;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+            padding: 2rem 1.5rem;
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            position: relative;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #60a5fa;
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #94a3b8;
+        }
+        
+        .nav-item:hover, .nav-item.active {
+            background: rgba(96, 165, 250, 0.1);
+            color: #60a5fa;
+            transform: translateX(4px);
+        }
+        
+        .nav-icon { width: 20px; margin-right: 1rem; }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        
+        .page-title {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Webcam Container */
+        .webcam-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            height: 500px;
+        }
+        
+        .video-section {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #video {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        #canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            color: white;
+            box-shadow: 0 10px 25px rgba(96, 165, 250, 0.3);
+        }
+        
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(96, 165, 250, 0.4); }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: #e2e8f0; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.2); }
+        
+        /* Status Card */
+        .status-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        
+        .status-card {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        
+        .status-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .status-normal .status-icon { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .status-no-face .status-icon { background: rgba(239, 68, 68, 0.2); color: #ef4444; animation: pulse 2s infinite; }
+        .status-multiple .status-icon { background: rgba(249, 115, 22, 0.2); color: #f97316; animation: shake 0.5s infinite; }
+        
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+        
+        .status-title { font-size: 1.1rem; font-weight: 500; opacity: 0.9; }
+        .status-message { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .face-count { font-size: 3rem; font-weight: 700; color: #60a5fa; }
+        
+        /* Logs */
+        .logs-card h3 { margin-bottom: 1rem; opacity: 0.9; }
+        .log-item {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 0.75rem;
+            border-left: 4px solid transparent;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .log-normal { border-left-color: #22c55e; }
+        .log-alert { border-left-color: #ef4444; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } }
+        
+        /* Mobile */
+        @media (max-width: 1024px) {
+            .sidebar { transform: translateX(-100%); position: fixed; height: 100vh; }
+            .sidebar.open { transform: translateX(0); }
+            .webcam-container { grid-template-columns: 1fr; height: auto; }
+            .main-content { padding: 1rem; }
+        }
+        
+        .mobile-menu { display: none; }
+        @media (max-width: 1024px) { .mobile-menu { display: block; } }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            color: white;
+            font-weight: 500;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+            z-index: 2000;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        .toast.show { transform: translateX(0); }
+        .toast.error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .toast.success { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="logo">
+                <i class="fas fa-shield-alt"></i> ShieldAI
+            </div>
+            <div class="nav-item active">
+                <i class="fas fa-video nav-icon"></i>
+                <span>Live Detection</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-chart-bar nav-icon"></i>
+                <span>Analytics</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-history nav-icon"></i>
+                <span>Session Logs</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-cog nav-icon"></i>
+                <span>Settings</span>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="header">
+                <button class="mobile-menu btn btn-secondary" onclick="toggleSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h1 class="page-title">Live Proctoring Dashboard</h1>
+                <div style="width: 50px;"></div>
+            </div>
+            
+            <div class="webcam-container">
+                <div class="video-section">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="canvas" width="640" height="480"></canvas>
+                    <div class="controls">
+                        <button id="startBtn" class="btn btn-primary">
+                            <i class="fas fa-play"></i> Start Detection
+                        </button>
+                        <button id="stopBtn" class="btn btn-secondary" disabled>
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="status-section">
+                    <div id="statusCard" class="status-card status-normal">
+                        <div class="status-header">
+                            <div class="status-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div>
+                                <div class="status-title">Detection Status</div>
+                            </div>
+                        </div>
+                        <div class="status-message">Ready to monitor</div>
+                        <div class="face-count" id="faceCount">0</div>
+                        <div id="statusMessage" style="opacity: 0.8; font-size: 1rem;">Click Start Detection</div>
+                    </div>
+                    
+                    <div class="status-card logs-card">
+                        <h3><i class="fas fa-list"></i> Recent Detections (Last 10)</h3>
+                        <div id="logList" style="max-height: 200px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <div id="toast" class="toast"></div>
+
+    <script src="{% static 'detector/js/main.js' %}"></script>
+    <script>
+        // Initialize camera on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initCamera();  // ← Initialize camera immediately!
+            startAutoRefresh();
+        });
+        
+        // Load dashboard immediately
+        fetchAnalytics();
+        
+        // Tab switching
+        document.querySelectorAll('.nav-item[data-tab]').forEach(item => {
+            item.addEventListener('click', () => {
+                // Update active nav
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Switch tabs
+                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                document.getElementById(item.dataset.tab + 'Tab').classList.add('active');
+                
+                // Update title
+                document.getElementById('pageTitle').textContent = item.textContent;
+                
+                if (item.dataset.tab === 'live') {
+                    initCamera(); // Init live if switched
+                }
+            });
+        });
+        
+        // Sidebar toggle, toast (existing)
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 4000);
+        }
+        
+        // Existing live functions preserved...
+    </script>
+    <!-- Include dashboard.html content or load via AJAX, but for simplicity extend here -->
+</body>
+</html>
+{% include 'detector/dashboard.html' %}

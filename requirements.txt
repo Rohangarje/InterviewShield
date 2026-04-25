@@ -1,0 +1,8 @@
+Django==6.0.4
+opencv-python==4.8.1.78
+numpy==1.24.3
+bcrypt==4.0.1
+PyMongo==4.4.1
+ultralytics==8.0.200
+torch==2.1.0
+pymongo==4.4.1
