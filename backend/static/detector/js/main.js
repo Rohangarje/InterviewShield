@@ -17,12 +17,20 @@ let analyticsInterval = null;
 let pieChart, barChart, lineChart;
 
 // ================= LIVE DETECTION (PRESERVED) =================
+let captureCanvas = null;
+let captureCtx = null;
+
 async function initCamera() {
     if (!video) return;
     try {
         console.log('Initializing camera...');
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+            video: { 
+                facingMode: 'user', 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 },
+                frameRate: { ideal: 30 }
+            } 
         });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
@@ -30,9 +38,12 @@ async function initCamera() {
                 console.error('Video play error:', err);
                 showToast('Camera play error: ' + err.message, 'error');
             });
-            if (canvas) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+            // Create a small offscreen canvas for frame capture (faster encoding)
+            if (!captureCanvas) {
+                captureCanvas = document.createElement('canvas');
+                captureCanvas.width = 320;
+                captureCanvas.height = 240;
+                captureCtx = captureCanvas.getContext('2d', { willReadFrequently: true });
             }
             showToast('Camera ready!', 'success');
             console.log('Camera initialized:', video.videoWidth, 'x', video.videoHeight);
@@ -49,9 +60,10 @@ async function initCamera() {
 }
 
 function captureFrame() {
-    if (!ctx || !video || !canvas) return null;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.8);
+    // Use the small offscreen canvas for fast capture + encoding
+    if (!captureCtx || !video || video.readyState < 2) return null;
+    captureCtx.drawImage(video, 0, 0, 320, 240);
+    return captureCanvas.toDataURL('image/jpeg', 0.5);
 }
 
 function getCsrfToken() {
@@ -214,7 +226,6 @@ function updateKPIs(summary) {
             </div>
             <div class="kpi-value">${kpi.value}</div>
             <div class="kpi-label">${kpi.label}</div>
-        </div>
     `).join('');
 }
 
@@ -322,6 +333,7 @@ function stopAutoRefresh() {
 
 // Global init
 document.addEventListener('DOMContentLoaded', () => {
+    initCamera();
     startAutoRefresh();
     
     // Sidebar toggle
@@ -541,9 +553,22 @@ function stopInterviewTimer() {
 
 function updateLiveSessionCard(show) {
     const card = document.getElementById('liveSessionCard');
+    const transCard = document.getElementById('transcriptionCard');
     const idEl = document.getElementById('liveInterviewId');
     if (card) card.style.display = show ? 'block' : 'none';
+    if (transCard) transCard.style.display = show ? 'block' : 'none';
     if (idEl && activeInterviewId) idEl.textContent = activeInterviewId;
+    
+    // Stop transcription when interview ends
+    if (!show && isTranscribing) {
+        stopTranscription();
+        const btn = document.getElementById('toggleTranscriptionBtn');
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-microphone"></i> Start Transcription';
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-primary');
+        }
+    }
 }
 
 function switchToLive() {
@@ -810,6 +835,250 @@ async function loadResume() {
         }
     } catch (err) {
         console.error('Load resume error:', err);
+    }
+}
+
+// ================= REAL-TIME TRANSCRIPTION & TRANSLATION =================
+let recognition = null;
+let isTranscribing = false;
+let transcriptionBuffer = '';
+
+function initSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        showToast('Speech recognition not supported in this browser. Use Chrome/Edge.', 'error');
+        return null;
+    }
+    
+    const rec = new SpeechRecognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    
+    rec.onresult = (event) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript + ' ';
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+        
+        const outputEl = document.getElementById('transcriptionOutput');
+        if (outputEl) {
+            if (finalTranscript) {
+                transcriptionBuffer += finalTranscript;
+                outputEl.innerHTML = `<div style="margin-bottom:0.5rem;">${transcriptionBuffer}</div><div style="opacity:0.6;">${interimTranscript}</div>`;
+                // Auto-translate final text
+                translateText(finalTranscript.trim());
+            } else {
+                outputEl.innerHTML = `<div style="margin-bottom:0.5rem;">${transcriptionBuffer}</div><div style="opacity:0.6;">${interimTranscript}</div>`;
+            }
+            outputEl.scrollTop = outputEl.scrollHeight;
+        }
+    };
+    
+    rec.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+            showToast('Microphone permission denied for transcription', 'error');
+            stopTranscription();
+        } else if (event.error === 'no-speech') {
+            // Auto-restart on no-speech
+            if (isTranscribing) {
+                try { rec.start(); } catch(e) {}
+            }
+        }
+    };
+    
+    rec.onend = () => {
+        // Auto-restart if still transcribing
+        if (isTranscribing) {
+            try { rec.start(); } catch(e) {}
+        }
+    };
+    
+    return rec;
+}
+
+async function translateText(text) {
+    if (!text) return;
+    
+    const targetLang = document.getElementById('targetLang')?.value || 'en';
+    const sourceLang = document.getElementById('sourceLang')?.value || 'en-US';
+    const sourceCode = sourceLang.split('-')[0];
+    
+    // Don't translate if source and target are the same
+    if (sourceCode === targetLang) return;
+    
+    const translationOutput = document.getElementById('translationOutput');
+    if (translationOutput) translationOutput.style.display = 'block';
+    
+    try {
+        // Use MyMemory API (free, no key required for reasonable usage)
+        const encodedText = encodeURIComponent(text);
+        const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodedText}&langpair=${sourceCode}|${targetLang}`, {
+            method: 'GET'
+        });
+        
+        if (!response.ok) throw new Error('Translation API error');
+        
+        const data = await response.json();
+        
+        if (data.responseData && data.responseData.translatedText) {
+            const translated = data.responseData.translatedText;
+            const transOutput = document.getElementById('translationOutput');
+            if (transOutput) {
+                const existing = transOutput.dataset.content || '';
+                const newContent = existing + translated + ' ';
+                transOutput.dataset.content = newContent;
+                transOutput.innerHTML = `<div style="color:#60a5fa;font-weight:600;margin-bottom:0.25rem;">Translation (${targetLang.toUpperCase()}):</div><div>${newContent}</div>`;
+                transOutput.scrollTop = transOutput.scrollHeight;
+            }
+        }
+    } catch (err) {
+        console.error('Translation error:', err);
+    }
+}
+
+function toggleTranscription() {
+    const btn = document.getElementById('toggleTranscriptionBtn');
+    
+    if (isTranscribing) {
+        stopTranscription();
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-microphone"></i> Start Transcription';
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-primary');
+        }
+        showToast('Transcription stopped', 'success');
+    } else {
+        startTranscription();
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-stop"></i> Stop Transcription';
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-danger');
+        }
+        showToast('Transcription started - speak now', 'success');
+    }
+}
+
+function startTranscription() {
+    const sourceLang = document.getElementById('sourceLang')?.value || 'en-US';
+    
+    if (!recognition) {
+        recognition = initSpeechRecognition();
+    }
+    
+    if (!recognition) return;
+    
+    recognition.lang = sourceLang;
+    transcriptionBuffer = '';
+    isTranscribing = true;
+    
+    // Clear previous output
+    const outputEl = document.getElementById('transcriptionOutput');
+    const transOutput = document.getElementById('translationOutput');
+    if (outputEl) outputEl.innerHTML = '<span style="opacity:0.5;">Listening...</span>';
+    if (transOutput) {
+        transOutput.innerHTML = '<span style="opacity:0.5;">Translation will appear here...</span>';
+        transOutput.dataset.content = '';
+        transOutput.style.display = 'none';
+    }
+    
+    try {
+        recognition.start();
+    } catch (err) {
+        console.error('Failed to start recognition:', err);
+        showToast('Failed to start transcription', 'error');
+        isTranscribing = false;
+    }
+}
+
+function stopTranscription() {
+    isTranscribing = false;
+    if (recognition) {
+        try {
+            recognition.stop();
+        } catch (err) {
+            console.error('Error stopping recognition:', err);
+        }
+    }
+}
+
+// ================= SESSION LOGS =================
+async function loadSessionLogs() {
+    const listEl = document.getElementById('sessionLogsList');
+    if (!listEl) return;
+
+    const dateFilter = document.getElementById('logDateFilter')?.value || '';
+    const statusFilter = document.getElementById('logStatusFilter')?.value || '';
+
+    try {
+        let url = '/api/logs/';
+        const params = [];
+        if (dateFilter) params.push(`date=${encodeURIComponent(dateFilter)}`);
+        if (statusFilter) params.push(`status=${encodeURIComponent(statusFilter)}`);
+        if (params.length) url += '?' + params.join('&');
+
+        const response = await fetch(url, {
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<p style="text-align:center;opacity:0.6;padding:2rem;">${data.error}</p>`;
+            return;
+        }
+
+        if (!data.logs || data.logs.length === 0) {
+            listEl.innerHTML = `<p style="text-align:center;opacity:0.6;padding:2rem;">No session logs found.</p>`;
+            return;
+        }
+
+        listEl.innerHTML = data.logs.map(log => {
+            const date = new Date(log.timestamp);
+            const dateStr = date.toLocaleDateString();
+            const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+            const riskColors = {
+                'high': '#ef4444',
+                'medium': '#f97316',
+                'low': '#22c55e'
+            };
+            const borderColor = riskColors[log.risk_score] || '#6b7280';
+
+            return `
+                <div class="interview-item" style="border-left-color: ${borderColor};">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                        <strong>Log #${log.id}</strong>
+                        <span class="status-badge badge-${log.risk_score}">${log.risk_score.toUpperCase()}</span>
+                    </div>
+                    <div style="opacity:0.8;font-size:0.9rem;">
+                        <i class="fas fa-calendar"></i> ${dateStr} at ${timeStr}
+                        <span style="margin-left:1rem;"><i class="fas fa-user"></i> Faces: ${log.face_count}</span>
+                        ${log.phone_detected ? '<span style="margin-left:1rem;color:#f97316;"><i class="fas fa-mobile-alt"></i> Phone Detected</span>' : ''}
+                    </div>
+                    <div style="margin-top:0.5rem;font-size:0.85rem;opacity:0.7;">
+                        Status: ${log.status.replace(/_/g, ' ').toUpperCase()}
+                        ${log.phone_confidence > 0 ? `| Confidence: ${log.phone_confidence.toFixed(2)}` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Load session logs error:', err);
+        listEl.innerHTML = `<p style="text-align:center;opacity:0.6;padding:2rem;">Failed to load session logs: ${err.message}</p>`;
     }
 }
 

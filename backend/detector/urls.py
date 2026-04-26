@@ -22,6 +22,7 @@ urlpatterns = [
     path('api/interview/<int:interview_id>/detections/', views.get_interview_detections, name='api_interview_detections'),
     path('api/resume/upload/', views.upload_resume, name='api_resume_upload'),
     path('api/resume/get/', views.get_resume, name='api_resume_get'),
+    path('api/logs/', views.session_logs, name='api_session_logs'),
     
     # Legacy endpoints (backward compatibility)
     path('login/', views.login_view, name='login'),
