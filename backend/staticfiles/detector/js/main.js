@@ -1,6 +1,6 @@
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas ? canvas.getContext('2d') : null;
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const logList = document.getElementById('logList');
@@ -18,37 +18,91 @@ let pieChart, barChart, lineChart;
 
 // ================= LIVE DETECTION (PRESERVED) =================
 async function initCamera() {
+    if (!video) return;
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        console.log('Initializing camera...');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+        });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
-            video.play();
+            video.play().catch(err => {
+                console.error('Video play error:', err);
+                showToast('Camera play error: ' + err.message, 'error');
+            });
+            if (canvas) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            }
             showToast('Camera ready!', 'success');
+            console.log('Camera initialized:', video.videoWidth, 'x', video.videoHeight);
         };
     } catch (err) {
-        showToast('Camera access denied', 'error');
+        console.error('Camera access error:', err);
+        const errorMsg = err.name === 'NotAllowedError' 
+            ? 'Camera permission denied. Please allow camera access in browser settings.'
+            : err.name === 'NotFoundError'
+            ? 'No camera found on this device.'
+            : 'Camera access failed: ' + err.message;
+        showToast(errorMsg, 'error');
     }
 }
 
 function captureFrame() {
+    if (!ctx || !video || !canvas) return null;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/jpeg', 0.8);
 }
 
+function getCsrfToken() {
+    const name = 'csrftoken';
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+        const [key, value] = cookie.trim().split('=');
+        if (key === name) return decodeURIComponent(value);
+    }
+    return '';
+}
+
 async function detectFaces() {
     const imgBase64 = captureFrame();
+    if (!imgBase64) return;
+    
+    const csrfToken = getCsrfToken();
     try {
         const response = await fetch('/api/detect/', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            credentials: 'same-origin',
             body: JSON.stringify({ image: imgBase64 })
         });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Invalid response type from server');
+        }
+        
         const data = await response.json();
+        
+        if (data.error) {
+            console.error('Detection error:', data.error);
+            showToast(`Detection error: ${data.error}`, 'error');
+            return;
+        }
         
         updateStatus(data);
         addLog(data);
     } catch (err) {
         console.error('Detection error:', err);
+        showToast(`Detection failed: ${err.message}`, 'error');
     }
 }
 
@@ -62,7 +116,7 @@ function updateStatus(data) {
     if (statusMsgEl) statusMsgEl.textContent = data.alert;
     
     if (data.phone_detected) {
-        showToast(`📱 Mobile detected! Conf: ${data.phone_confidence}`, 'error');
+        showToast(`Mobile detected! Conf: ${data.phone_confidence}`, 'error');
     } else if (data.face_status !== 'normal') {
         showToast(data.alert, 'error');
     }
@@ -72,35 +126,56 @@ function addLog(data) {
     if (!logList) return;
     const li = document.createElement('li');
     li.className = data.risk_score === 'high' ? 'log-alert log-item' : 'log-normal log-item';
-    li.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${data.alert} (Faces: ${data.face_count}${data.phone_detected ? ', 📱' : ''})`;
+    li.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${data.alert} (Faces: ${data.face_count}${data.phone_detected ? ', Mobile' : ''})`;
     logList.insertBefore(li, logList.firstChild);
     
     while (logList.children.length > 10) logList.removeChild(logList.lastChild);
 }
 
-startBtn.onclick = () => {
-    if (!isDetecting) {
-        isDetecting = true;
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        detectFaces();
-        detectionInterval = setInterval(detectFaces, 2000);
-        showToast('Detection started');
+function updateButtonVisibility(detecting) {
+    if (startBtn) {
+        startBtn.style.display = detecting ? 'none' : 'flex';
+        startBtn.disabled = detecting;
     }
-};
+    if (stopBtn) {
+        stopBtn.style.display = detecting ? 'flex' : 'none';
+        stopBtn.disabled = !detecting;
+    }
+}
 
-stopBtn.onclick = () => {
-    isDetecting = false;
-    clearInterval(detectionInterval);
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    showToast('Detection stopped');
-};
+if (startBtn) {
+    startBtn.onclick = () => {
+        if (!isDetecting) {
+            isDetecting = true;
+            updateButtonVisibility(true);
+            detectFaces();
+            detectionInterval = setInterval(detectFaces, 2000);
+            showToast('Detection started');
+        }
+    };
+}
+
+if (stopBtn) {
+    stopBtn.onclick = () => {
+        isDetecting = false;
+        clearInterval(detectionInterval);
+        updateButtonVisibility(false);
+        showToast('Detection stopped');
+    };
+}
 
 // ================= ANALYTICS DASHBOARD =================
 async function fetchAnalytics() {
     try {
-        const response = await fetch('/api/analytics/');
+        const response = await fetch('/api/analytics/', {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
         const data = await response.json();
         
         // Update KPIs
@@ -234,12 +309,15 @@ function showToast(message, type = 'success') {
 // ================= INIT =================
 let refreshTimer;
 function startAutoRefresh() {
+    // Avoid multiple timers
+    if (refreshTimer) clearInterval(refreshTimer);
     fetchAnalytics(); // Initial load
     refreshTimer = setInterval(fetchAnalytics, 30000); // 30s
 }
 
 function stopAutoRefresh() {
     clearInterval(refreshTimer);
+    refreshTimer = null;
 }
 
 // Global init
@@ -251,4 +329,487 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Refresh button
     document.getElementById('refreshBtn')?.addEventListener('click', fetchAnalytics);
+    
+    // Resume upload
+    setupResumeUpload();
+    
+    // Tab switch detection
+    setupTabSwitchDetection();
+    
+    // Load interview data on init (restores active session state)
+    loadInterviews();
+    loadResume();
 });
+
+// ================= TAB SWITCH DETECTION =================
+function setupTabSwitchDetection() {
+    document.addEventListener('visibilitychange', () => {
+        if (!activeInterviewId) return; // Only during interviews
+        
+        if (document.hidden) {
+            // User switched away from the tab
+            const logData = {
+                face_status: 'tab_switched',
+                face_count: 0,
+                phone_detected: false,
+                phone_confidence: 0,
+                risk_score: 'high',
+                alert: '⚠️ Tab Switched - User left the page!',
+                indicators: ['Tab Switch']
+            };
+            
+            // Add to live log
+            addLog(logData);
+            
+            // Show toast
+            showToast('Warning: Tab switched during interview!', 'error');
+            
+            // Send to backend
+            sendTabSwitchEvent();
+        } else {
+            // User returned
+            showToast('Tab focus restored', 'success');
+        }
+    });
+    
+    // Also detect window blur/focus for better coverage
+    window.addEventListener('blur', () => {
+        if (!activeInterviewId) return;
+        window._interviewBlurred = true;
+    });
+    
+    window.addEventListener('focus', () => {
+        if (!activeInterviewId) return;
+        if (window._interviewBlurred) {
+            window._interviewBlurred = false;
+            const logData = {
+                face_status: 'tab_returned',
+                face_count: 0,
+                phone_detected: false,
+                phone_confidence: 0,
+                risk_score: 'low',
+                alert: 'Tab focus restored',
+                indicators: []
+            };
+            addLog(logData);
+        }
+    });
+}
+
+async function sendTabSwitchEvent() {
+    if (!activeInterviewId) return;
+    
+    try {
+        await fetch('/api/detect/', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ 
+                image: 'data:image/jpeg;base64,TAB_SWITCH',
+                event_type: 'tab_switch',
+                active_interview_id: activeInterviewId
+            })
+        });
+    } catch (err) {
+        console.error('Tab switch log failed:', err);
+    }
+}
+
+// ================= INTERVIEW MANAGEMENT =================
+let activeInterviewId = null;
+let interviewTimerInterval = null;
+let interviewStartTime = null;
+
+async function startInterview() {
+    try {
+        const response = await fetch('/api/interview/start/', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        activeInterviewId = data.interview_id;
+        interviewStartTime = new Date(data.start_time);
+        
+        document.getElementById('noActiveInterview').style.display = 'none';
+        document.getElementById('activeInterview').style.display = 'block';
+        document.getElementById('activeInterviewId').textContent = activeInterviewId;
+        
+        updateLiveSessionCard(true);
+        startInterviewTimer();
+        showToast('Interview started! Go to Live Detection to begin proctoring.', 'success');
+        loadInterviews();
+    } catch (err) {
+        console.error('Start interview error:', err);
+        showToast('Failed to start interview: ' + err.message, 'error');
+    }
+}
+
+async function endInterview() {
+    if (!activeInterviewId) {
+        showToast('No active interview', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to end this interview? A report will be generated.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/interview/end/', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        stopInterviewTimer();
+        activeInterviewId = null;
+        interviewStartTime = null;
+        
+        document.getElementById('noActiveInterview').style.display = 'block';
+        document.getElementById('activeInterview').style.display = 'none';
+        document.getElementById('interviewTimer').textContent = '00:00';
+        updateLiveSessionCard(false);
+        
+        showToast(`Interview ended! Report: ${data.report.overall_risk.toUpperCase()} risk`, 'success');
+        loadInterviews();
+        
+        // Show report modal
+        if (data.report) {
+            await viewReport(data.interview_id);
+        }
+    } catch (err) {
+        console.error('End interview error:', err);
+        showToast('Failed to end interview: ' + err.message, 'error');
+    }
+}
+
+function startInterviewTimer() {
+    stopInterviewTimer();
+    interviewTimerInterval = setInterval(() => {
+        if (!interviewStartTime) return;
+        const elapsed = Math.floor((Date.now() - interviewStartTime.getTime()) / 1000);
+        const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+        const secs = (elapsed % 60).toString().padStart(2, '0');
+        const timeStr = `${mins}:${secs}`;
+        const timerEl = document.getElementById('interviewTimer');
+        const liveTimerEl = document.getElementById('liveInterviewTimer');
+        if (timerEl) timerEl.textContent = timeStr;
+        if (liveTimerEl) liveTimerEl.textContent = timeStr;
+    }, 1000);
+}
+
+function stopInterviewTimer() {
+    if (interviewTimerInterval) {
+        clearInterval(interviewTimerInterval);
+        interviewTimerInterval = null;
+    }
+}
+
+function updateLiveSessionCard(show) {
+    const card = document.getElementById('liveSessionCard');
+    const idEl = document.getElementById('liveInterviewId');
+    if (card) card.style.display = show ? 'block' : 'none';
+    if (idEl && activeInterviewId) idEl.textContent = activeInterviewId;
+}
+
+function switchToLive() {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.querySelector('.nav-item[data-tab="live"]')?.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById('liveTab').classList.add('active');
+    document.getElementById('pageTitle').textContent = 'Live Proctoring Dashboard';
+    initCamera();
+    updateLiveSessionCard(true);
+}
+
+async function endInterviewFromLive() {
+    await endInterview();
+    updateLiveSessionCard(false);
+}
+
+async function loadInterviews() {
+    const listEl = document.getElementById('interviewList');
+    if (!listEl) return;
+    
+    try {
+        const response = await fetch('/api/interview/list/', {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            listEl.innerHTML = `<p style="text-align:center;opacity:0.6;padding:2rem;">${data.error}</p>`;
+            return;
+        }
+        
+        if (!data.interviews || data.interviews.length === 0) {
+            listEl.innerHTML = `<p style="text-align:center;opacity:0.6;padding:2rem;">No interviews yet. Start your first one!</p>`;
+            return;
+        }
+        
+        // Check for active interview
+        const active = data.interviews.find(i => i.status === 'active');
+        if (active && !activeInterviewId) {
+            activeInterviewId = active.id;
+            interviewStartTime = new Date(active.start_time);
+            document.getElementById('noActiveInterview').style.display = 'none';
+            document.getElementById('activeInterview').style.display = 'block';
+            document.getElementById('activeInterviewId').textContent = activeInterviewId;
+            updateLiveSessionCard(true);
+            startInterviewTimer();
+        }
+        
+        listEl.innerHTML = data.interviews.map(interview => {
+            const date = new Date(interview.start_time);
+            const dateStr = date.toLocaleDateString();
+            const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const duration = interview.duration_seconds ? `${Math.floor(interview.duration_seconds / 60)}m ${interview.duration_seconds % 60}s` : 'In progress';
+            
+            let itemClass = 'interview-item';
+            if (interview.status === 'active') itemClass += ' active-session';
+            else if (interview.status === 'completed') itemClass += ' completed';
+            if (interview.overall_risk === 'high') itemClass += ' high-risk';
+            
+            let riskBadge = '';
+            if (interview.overall_risk) {
+                const badgeClass = `badge-${interview.overall_risk}`;
+                riskBadge = `<span class="status-badge ${badgeClass}">${interview.overall_risk.toUpperCase()}</span>`;
+            }
+            
+            let actions = '';
+            if (interview.status === 'completed' && interview.has_report) {
+                actions = `
+                    <div class="interview-actions">
+                        <button class="btn btn-sm btn-primary" onclick="viewReport(${interview.id})">
+                            <i class="fas fa-file-alt"></i> View Report
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="downloadReport(${interview.id})">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="${itemClass}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                        <strong>Interview #${interview.id}</strong>
+                        <div style="display:flex;gap:0.5rem;align-items:center;">
+                            ${interview.status === 'active' ? '<span class="status-badge badge-active">ACTIVE</span>' : ''}
+                            ${riskBadge}
+                        </div>
+                    </div>
+                    <div style="opacity:0.8;font-size:0.9rem;">
+                        <i class="fas fa-calendar"></i> ${dateStr} at ${timeStr}
+                        <span style="margin-left:1rem;"><i class="fas fa-clock"></i> ${duration}</span>
+                        ${interview.has_resume ? '<span style="margin-left:1rem;color:#a855f7;"><i class="fas fa-file"></i> Resume</span>' : ''}
+                    </div>
+                    ${interview.cheating_percentage !== null ? `<div style="margin-top:0.5rem;font-size:0.85rem;">Cheating: ${interview.cheating_percentage}% | Detections: ${interview.duration_seconds > 0 ? Math.round(interview.duration_seconds / 2) : 0}</div>` : ''}
+                    ${actions}
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Load interviews error:', err);
+        listEl.innerHTML = `<p style="text-align:center;opacity:0.6;padding:2rem;">Failed to load interviews: ${err.message}</p>`;
+    }
+}
+
+async function viewReport(interviewId) {
+    try {
+        const response = await fetch(`/api/interview/${interviewId}/report/`, {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            showToast(data.error, 'error');
+            return;
+        }
+        
+        const reportBody = document.getElementById('reportBody');
+        if (data.report && data.report.html) {
+            reportBody.innerHTML = data.report.html;
+        } else {
+            reportBody.innerHTML = `
+                <div style="text-align:center;padding:3rem;">
+                    <h3 style="color:#ef4444;margin-bottom:1rem;">Report Not Available</h3>
+                    <p>No detailed report was generated for this interview.</p>
+                </div>
+            `;
+        }
+        
+        document.getElementById('reportModal').classList.add('active');
+    } catch (err) {
+        console.error('View report error:', err);
+        showToast('Failed to load report: ' + err.message, 'error');
+    }
+}
+
+function closeReportModal() {
+    document.getElementById('reportModal').classList.remove('active');
+}
+
+async function downloadReport(interviewId) {
+    try {
+        const response = await fetch(`/api/interview/${interviewId}/report/`, {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error || !data.report) {
+            showToast('Report not available', 'error');
+            return;
+        }
+        
+        // Create a blob and download
+        const htmlContent = data.report.html || `<html><body><h1>Interview Report #${interviewId}</h1><pre>${JSON.stringify(data.report.data, null, 2)}</pre></body></html>`;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `interview-report-${interviewId}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast('Report downloaded!', 'success');
+    } catch (err) {
+        console.error('Download report error:', err);
+        showToast('Failed to download report: ' + err.message, 'error');
+    }
+}
+
+// ================= RESUME UPLOAD =================
+function setupResumeUpload() {
+    const fileInput = document.getElementById('resumeFile');
+    if (!fileInput) return;
+    
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('resume', file);
+        
+        try {
+            showToast('Uploading resume...', 'success');
+            const response = await fetch('/api/resume/upload/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                },
+                credentials: 'same-origin',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                showToast(data.error, 'error');
+                return;
+            }
+            
+            showToast('Resume uploaded successfully!', 'success');
+            updateResumeUI(data.filename, data.url);
+        } catch (err) {
+            console.error('Upload error:', err);
+            showToast('Failed to upload resume: ' + err.message, 'error');
+        } finally {
+            // Clear input so the same file can be selected again
+            fileInput.value = '';
+        }
+    });
+}
+
+function updateResumeUI(filename, url) {
+    const uploadArea = document.getElementById('resumeUploadArea');
+    const info = document.getElementById('resumeInfo');
+    const filenameEl = document.getElementById('resumeFilename');
+    const linkEl = document.getElementById('resumeLink');
+    
+    if (uploadArea) uploadArea.classList.add('has-file');
+    if (info) info.style.display = 'flex';
+    if (filenameEl) filenameEl.textContent = filename;
+    if (linkEl) linkEl.href = url;
+}
+
+async function loadResume() {
+    try {
+        const response = await fetch('/api/resume/get/', {
+            credentials: 'same-origin'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({error: `Server error: ${response.status}`}));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.has_resume) {
+            updateResumeUI(data.filename || 'Resume', data.url);
+        }
+    } catch (err) {
+        console.error('Load resume error:', err);
+    }
+}
+

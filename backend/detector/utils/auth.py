@@ -20,7 +20,7 @@ def user_exists(username):
         return coll.find_one({'username': username}, {'_id': 1})
     return None
 
-def create_user(username, email, password):
+def create_user(username, email, password, resume_url=None):
     """Create new user in Mongo"""
     coll = get_collection()
     if coll is not None and not user_exists(username):
@@ -29,10 +29,31 @@ def create_user(username, email, password):
             'username': username,
             'email': email,
             'password': hashed_pw,
+            'resume_url': resume_url,
             'created_at': datetime.utcnow().isoformat()
         }
         result = coll.insert_one(user_doc)
         return result.inserted_id
+    return None
+
+def update_user_resume(username, resume_url):
+    """Update user's resume URL"""
+    coll = get_collection()
+    if coll is not None:
+        result = coll.update_one(
+            {'username': username},
+            {'$set': {'resume_url': resume_url, 'updated_at': datetime.utcnow().isoformat()}}
+        )
+        return result.modified_count > 0
+    return False
+
+def get_user_resume(username):
+    """Get user's resume URL"""
+    coll = get_collection()
+    if coll is not None:
+        user = coll.find_one({'username': username}, {'resume_url': 1})
+        if user:
+            return user.get('resume_url')
     return None
 
 def authenticate_user(username, password):

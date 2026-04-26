@@ -7,6 +7,7 @@
     {% load static %}
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -85,6 +86,10 @@
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
+        
+        /* Tab Sections */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         
         /* Webcam Container */
         .webcam-container {
@@ -205,12 +210,84 @@
         .log-alert { border-left-color: #ef4444; animation: slideIn 0.3s ease; }
         @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } }
         
+        /* Analytics Dashboard */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .kpi-card {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-card:hover { transform: translateY(-8px); box-shadow: 0 25px 50px rgba(0,0,0,0.3); }
+        
+        .kpi-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .total .kpi-icon { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+        .normal .kpi-icon { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .alert .kpi-icon { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .phone .kpi-icon { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+        .cheating .kpi-icon { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        
+        .kpi-value { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .kpi-label { opacity: 0.8; font-size: 0.95rem; }
+        
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 1200px) { .charts-grid { grid-template-columns: 1fr; } }
+        
+        .chart-container {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            height: 400px;
+        }
+        .chart-container h3 {
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .refresh-info {
+            text-align: center;
+            opacity: 0.6;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+        
         /* Mobile */
         @media (max-width: 1024px) {
             .sidebar { transform: translateX(-100%); position: fixed; height: 100vh; }
             .sidebar.open { transform: translateX(0); }
             .webcam-container { grid-template-columns: 1fr; height: auto; }
             .main-content { padding: 1rem; }
+            .charts-grid { grid-template-columns: 1fr; }
         }
         
         .mobile-menu { display: none; }
@@ -232,6 +309,183 @@
         .toast.show { transform: translateX(0); }
         .toast.error { background: linear-gradient(135deg, #ef4444, #dc2626); }
         .toast.success { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        
+        /* Interview Tab Styles */
+        .nav-item.interview.active { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+        
+        .interview-container { max-width: 1200px; margin: 0 auto; }
+        
+        .interview-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 1024px) { .interview-grid { grid-template-columns: 1fr; } }
+        
+        .interview-card {
+            background: rgba(20, 20, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .interview-card h3 {
+            color: #a855f7;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .resume-upload-area {
+            border: 2px dashed rgba(168, 85, 247, 0.3);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .resume-upload-area:hover {
+            border-color: #a855f7;
+            background: rgba(168, 85, 247, 0.05);
+        }
+        .resume-upload-area.has-file {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.05);
+        }
+        
+        .file-input { display: none; }
+        
+        .resume-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            margin-top: 1rem;
+        }
+        
+        .interview-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .interview-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-left: 4px solid #a855f7;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .interview-item:hover {
+            background: rgba(255,255,255,0.08);
+            transform: translateX(4px);
+        }
+        .interview-item.active-session {
+            border-left-color: #22c55e;
+            background: rgba(34, 197, 94, 0.05);
+        }
+        .interview-item.completed {
+            border-left-color: #60a5fa;
+        }
+        .interview-item.high-risk {
+            border-left-color: #ef4444;
+        }
+        
+        .interview-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            border-radius: 8px;
+        }
+        
+        .btn-purple {
+            background: linear-gradient(135deg, #a855f7, #7c3aed);
+            color: white;
+            box-shadow: 0 8px 20px rgba(168, 85, 247, 0.3);
+        }
+        .btn-purple:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(168, 85, 247, 0.4); }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+        
+        .report-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 3000;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+        .report-modal.active { display: block; }
+        
+        .report-content {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #0f0f23;
+            border-radius: 24px;
+            overflow: hidden;
+        }
+        
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            background: rgba(20,20,40,0.9);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .report-body { padding: 2rem; }
+        
+        .close-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: #e2e8f0;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.2s;
+        }
+        .close-btn:hover { background: rgba(239,68,68,0.2); color: #ef4444; }
+        
+        .timer-display {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #a855f7;
+            text-align: center;
+            font-family: monospace;
+            margin: 1rem 0;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .badge-active { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .badge-completed { background: rgba(96,165,250,0.2); color: #60a5fa; }
+        .badge-high { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .badge-medium { background: rgba(249,115,22,0.2); color: #f97316; }
+        .badge-low { background: rgba(34,197,94,0.2); color: #22c55e; }
     </style>
 </head>
 <body>
@@ -241,13 +495,17 @@
             <div class="logo">
                 <i class="fas fa-shield-alt"></i> ShieldAI
             </div>
-            <div class="nav-item active">
+            <div class="nav-item active" data-tab="live">
                 <i class="fas fa-video nav-icon"></i>
                 <span>Live Detection</span>
             </div>
-            <div class="nav-item">
+            <div class="nav-item" data-tab="analytics">
                 <i class="fas fa-chart-bar nav-icon"></i>
                 <span>Analytics</span>
+            </div>
+            <div class="nav-item interview" data-tab="interview">
+                <i class="fas fa-briefcase nav-icon"></i>
+                <span>Interviews</span>
             </div>
             <div class="nav-item">
                 <i class="fas fa-history nav-icon"></i>
@@ -265,61 +523,181 @@
                 <button class="mobile-menu btn btn-secondary" onclick="toggleSidebar()">
                     <i class="fas fa-bars"></i>
                 </button>
-                <h1 class="page-title">Live Proctoring Dashboard</h1>
+                <h1 class="page-title" id="pageTitle">Live Proctoring Dashboard</h1>
                 <div style="width: 50px;"></div>
             </div>
             
-            <div class="webcam-container">
-                <div class="video-section">
-                    <video id="video" autoplay muted playsinline></video>
-                    <canvas id="canvas" width="640" height="480"></canvas>
-                    <div class="controls">
-                        <button id="startBtn" class="btn btn-primary">
-                            <i class="fas fa-play"></i> Start Detection
-                        </button>
-                        <button id="stopBtn" class="btn btn-secondary" disabled>
-                            <i class="fas fa-stop"></i> Stop
-                        </button>
+            <!-- Live Detection Tab -->
+            <div id="liveTab" class="tab-content active">
+                <div class="webcam-container">
+                    <div class="video-section">
+                        <video id="video" autoplay muted playsinline></video>
+                        <canvas id="canvas" width="640" height="480"></canvas>
+                        <div class="controls">
+                            <button id="startBtn" class="btn btn-primary">
+                                <i class="fas fa-play"></i> Start Detection
+                            </button>
+                            <button id="stopBtn" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="status-section">
+                        <div id="statusCard" class="status-card status-normal">
+                            <div class="status-header">
+                                <div class="status-icon">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <div>
+                                    <div class="status-title">Detection Status</div>
+                                </div>
+                            </div>
+                            <div class="status-message">Ready to monitor</div>
+                            <div class="face-count" id="faceCount">0</div>
+                            <div id="statusMessage" style="opacity: 0.8; font-size: 1rem;">Click Start Detection</div>
+                        </div>
+                        
+                        <div class="status-card logs-card">
+                            <h3><i class="fas fa-list"></i> Recent Detections (Last 10)</h3>
+                            <div id="logList" style="max-height: 200px; overflow-y: auto;"></div>
+                        </div>
+                        
+                        <div class="status-card" id="liveSessionCard" style="display: none; border-color: rgba(168,85,247,0.3);">
+                            <div class="status-header">
+                                <div class="status-icon" style="background: rgba(168,85,247,0.2); color: #a855f7;">
+                                    <i class="fas fa-briefcase"></i>
+                                </div>
+                                <div>
+                                    <div class="status-title">Active Interview Session</div>
+                                </div>
+                            </div>
+                            <div style="font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; color: #a855f7;">
+                                Interview #<span id="liveInterviewId">-</span>
+                            </div>
+                            <div id="liveInterviewTimer" style="font-family: monospace; font-size: 1.5rem; margin-bottom: 1rem;">00:00</div>
+                            <button class="btn btn-danger" onclick="endInterviewFromLive()" style="width: 100%;">
+                                <i class="fas fa-stop"></i> End Interview Session
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Analytics Tab -->
+            <div id="analyticsTab" class="tab-content">
+                <div class="analytics-grid" id="kpiGrid">
+                    <!-- KPI cards populated by JS -->
+                </div>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h3><i class="fas fa-chart-pie"></i> Distribution</h3>
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3><i class="fas fa-chart-bar"></i> Counts</h3>
+                        <canvas id="barChart"></canvas>
                     </div>
                 </div>
                 
-                <div class="status-section">
-                    <div id="statusCard" class="status-card status-normal">
-                        <div class="status-header">
-                            <div class="status-icon">
-                                <i class="fas fa-check-circle"></i>
+                <div class="chart-container" style="grid-column: 1 / -1;">
+                    <h3><i class="fas fa-chart-line"></i> Trends (Last 30 Days)</h3>
+                    <canvas id="lineChart"></canvas>
+                </div>
+                
+                <div class="refresh-info">
+                    <i class="fas fa-sync-alt"></i> Auto-refreshes every 30 seconds | <span id="dataCount">0</span> sessions
+                </div>
+            </div>
+            
+            <!-- Interview Tab -->
+            <div id="interviewTab" class="tab-content">
+                <div class="interview-container">
+                    <div class="interview-grid">
+                        <!-- Resume Upload Card -->
+                        <div class="interview-card">
+                            <h3><i class="fas fa-file-upload"></i> Resume Upload</h3>
+                            <div class="resume-upload-area" id="resumeUploadArea" onclick="document.getElementById('resumeFile').click()">
+                                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #a855f7; margin-bottom: 1rem;"></i>
+                                <p style="margin-bottom: 0.5rem;">Click or drag to upload resume</p>
+                                <p style="opacity: 0.6; font-size: 0.85rem;">PDF, JPG, PNG (max 10MB)</p>
+                                <input type="file" id="resumeFile" class="file-input" accept=".pdf,.jpg,.jpeg,.png">
                             </div>
-                            <div>
-                                <div class="status-title">Detection Status</div>
+                            <div id="resumeInfo" class="resume-info" style="display: none;">
+                                <i class="fas fa-file" style="color: #a855f7; font-size: 1.5rem;"></i>
+                                <div style="flex: 1;">
+                                    <div id="resumeFilename" style="font-weight: 500;"></div>
+                                    <a id="resumeLink" href="#" target="_blank" style="color: #a855f7; font-size: 0.85rem;">View Resume</a>
+                                </div>
+                                <button class="btn btn-sm btn-secondary" onclick="document.getElementById('resumeFile').click(); event.stopPropagation();">
+                                    <i class="fas fa-redo"></i>
+                                </button>
                             </div>
                         </div>
-                        <div class="status-message">Ready to monitor</div>
-                        <div class="face-count" id="faceCount">0</div>
-                        <div id="statusMessage" style="opacity: 0.8; font-size: 1rem;">Click Start Detection</div>
+                        
+                        <!-- Active Interview Card -->
+                        <div class="interview-card">
+                            <h3><i class="fas fa-play-circle"></i> Interview Session</h3>
+                            <div id="interviewControls">
+                                <div id="noActiveInterview">
+                                    <p style="opacity: 0.8; margin-bottom: 1.5rem;">No active interview session. Start a new one to begin proctoring.</p>
+                                    <button id="startInterviewBtn" class="btn btn-purple" onclick="startInterview()">
+                                        <i class="fas fa-play"></i> Start New Interview
+                                    </button>
+                                </div>
+                                <div id="activeInterview" style="display: none;">
+                                    <div style="text-align: center; margin-bottom: 1.5rem;">
+                                        <span class="status-badge badge-active">ACTIVE</span>
+                                    </div>
+                                    <div class="timer-display" id="interviewTimer">00:00</div>
+                                    <p style="text-align: center; opacity: 0.7; margin-bottom: 1.5rem;">
+                                        Interview #<span id="activeInterviewId">-</span>
+                                    </p>
+                                    <div style="display: flex; gap: 1rem; justify-content: center;">
+                                        <button id="goLiveBtn" class="btn btn-primary" onclick="switchToLive()">
+                                            <i class="fas fa-video"></i> Go Live
+                                        </button>
+                                        <button id="endInterviewBtn" class="btn btn-danger" onclick="endInterview()">
+                                            <i class="fas fa-stop"></i> End Interview
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="status-card logs-card">
-                        <h3><i class="fas fa-list"></i> Recent Detections (Last 10)</h3>
-                        <div id="logList" style="max-height: 200px; overflow-y: auto;"></div>
+                    <!-- Interview History -->
+                    <div class="interview-card">
+                        <h3><i class="fas fa-history"></i> Interview History</h3>
+                        <div id="interviewList" class="interview-list">
+                            <p style="text-align: center; opacity: 0.6; padding: 2rem;">Loading interviews...</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </main>
     </div>
     
+    <!-- Report Modal -->
+    <div id="reportModal" class="report-modal" onclick="if(event.target===this)closeReportModal()">
+        <div class="report-content">
+            <div class="report-header">
+                <h2 style="color: #60a5fa;"><i class="fas fa-file-alt"></i> Interview Report</h2>
+                <button class="close-btn" onclick="closeReportModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="report-body" id="reportBody">
+                <!-- Report content populated by JS -->
+            </div>
+        </div>
+    </div>
+    
     <div id="toast" class="toast"></div>
 
     <script src="{% static 'detector/js/main.js' %}"></script>
     <script>
-        // Initialize camera on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            initCamera();  // ← Initialize camera immediately!
-            startAutoRefresh();
-        });
-        
-        // Load dashboard immediately
-        fetchAnalytics();
-        
         // Tab switching
         document.querySelectorAll('.nav-item[data-tab]').forEach(item => {
             item.addEventListener('click', () => {
@@ -332,26 +710,23 @@
                 document.getElementById(item.dataset.tab + 'Tab').classList.add('active');
                 
                 // Update title
-                document.getElementById('pageTitle').textContent = item.textContent;
+                const titles = {
+                    'live': 'Live Proctoring Dashboard',
+                    'analytics': 'Analytics Dashboard',
+                    'interview': 'Interview Management'
+                };
+                document.getElementById('pageTitle').textContent = titles[item.dataset.tab] || 'ShieldAI';
                 
                 if (item.dataset.tab === 'live') {
-                    initCamera(); // Init live if switched
+                    initCamera();
+                }
+                if (item.dataset.tab === 'interview') {
+                    loadInterviews();
+                    loadResume();
                 }
             });
         });
-        
-        // Sidebar toggle, toast (existing)
-        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = `toast ${type} show`;
-            setTimeout(() => toast.classList.remove('show'), 4000);
-        }
-        
-        // Existing live functions preserved...
     </script>
-    <!-- Include dashboard.html content or load via AJAX, but for simplicity extend here -->
 </body>
 </html>
-{% include 'detector/dashboard.html' %}
+
